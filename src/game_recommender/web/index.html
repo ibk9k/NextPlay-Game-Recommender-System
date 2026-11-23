@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Discover Steam games through your ratings, similar players, and description search.">
+  <title>Nextplay · Game Recommender</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to games</a>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#discover" aria-label="Nextplay home">
+        <span class="brand-mark" aria-hidden="true">n</span>
+        <span>nextplay<span class="brand-caption">Game recommender</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a class="nav-link" href="#discover" data-route="discover"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Discover</a>
+        <a class="nav-link" href="#ratings" data-route="ratings"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v17l-7-4-7 4z"/></svg>Your ratings <span id="rating-count" class="nav-count">0</span></a>
+        <p class="nav-label">Find your next game</p>
+        <a class="nav-link" href="#content" data-route="content"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.4l6.1-.9z"/></svg>Your taste</a>
+        <a class="nav-link" href="#collaborative" data-route="collaborative"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5.7"/></svg>Similar players</a>
+        <a class="nav-link" href="#search" data-route="search"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5M8 10.5h5M10.5 8v5"/></svg>Describe a game</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="profile-dot" aria-hidden="true"></span>
+        <div>Your player profile<small>Ratings saved for this browser</small></div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <span class="workspace-name">Your game library</span>
+        <div class="topbar-status"><span id="neural-state">Connecting…</span><span class="separator" aria-hidden="true"></span><span id="source-badge" class="source-badge">Loading catalogue</span></div>
+      </header>
+      <main id="main" tabindex="-1">
+        <details id="source-info" class="source-info">
+          <summary><span id="source-summary">Loading data information…</span><span class="source-more">About this data</span></summary>
+          <p id="source-description"></p>
+        </details>
+        <div id="view" aria-busy="true"><div class="initial-loading">Loading your game library…</div></div>
+      </main>
+      <footer class="page-footer"><span>Game Recommender System · Research project</span><a href="/docs" target="_blank" rel="noopener">API explorer ↗</a></footer>
+    </div>
+  </div>
+  <p id="announcer" class="sr-only" role="status" aria-live="polite"></p>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
+

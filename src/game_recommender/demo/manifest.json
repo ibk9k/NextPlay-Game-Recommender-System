@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "mode": "demo",
+  "game_count": 36,
+  "peer_count": 32,
+  "interaction_count": 296,
+  "seed": 42,
+  "note": "Manually written game metadata and SYNTHETIC peer ratings, not Kaggle training data."
+}
