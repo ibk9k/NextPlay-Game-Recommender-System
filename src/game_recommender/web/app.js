@@ -1,7 +1,7 @@
 "use strict";
 
 const view = document.querySelector("#view");
-const routes = new Set(["discover", "content", "collaborative", "search", "ratings"]);
+const routes = new Set(["discover", "content", "collaborative", "search", "ratings", "evaluation"]);
 const state = {
   ready: false, status: null, tags: [], ratings: {}, savedGames: new Map(), games: new Map(),
   route: "discover", q: "", tag: "", offset: 0, total: 0, pageSize: 12,
@@ -47,9 +47,12 @@ function notify(message, error = false) {
   toastTimer = setTimeout(() => { toast.hidden = true; }, error ? 6500 : 2500);
 }
 
-function heading(title, description) {
+function heading(title, description, showRatingLink = true) {
   const count = Object.keys(state.ratings).length;
-  return `<div class="view-heading"><div><h1 tabindex="-1">${escapeHTML(title)}</h1><p>${escapeHTML(description)}</p></div><a class="rating-link" href="#ratings">${count} ${count === 1 ? "game" : "games"} rated ↗</a></div>`;
+  const ratingLink = showRatingLink
+    ? `<a class="rating-link" href="#ratings">${count} ${count === 1 ? "game" : "games"} rated ↗</a>`
+    : "";
+  return `<div class="view-heading"><div><h1 tabindex="-1">${escapeHTML(title)}</h1><p>${escapeHTML(description)}</p></div>${ratingLink}</div>`;
 }
 
 function skeletons(count = 8) {
@@ -344,6 +347,88 @@ async function searchGames() {
   }
 }
 
+function evaluationHTML(report) {
+  const { k, evaluated_users: users, training_interactions: training, models, diagnostics } = report;
+  const number = new Intl.NumberFormat();
+  const percent = new Intl.NumberFormat(undefined, {
+    style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  const methods = [
+    ["popularity", "Popularity baseline"],
+    ["content", "Content-based filtering"],
+    ["collaborative", "Collaborative filtering"],
+  ];
+  const rows = methods.map(([method, label]) => {
+    const metrics = models[method];
+    const recall = metrics[`recall@${k}`];
+    const hits = metrics.hits ?? Math.round(recall * users);
+    return `<tr>
+      <th scope="row">${label}</th>
+      <td><strong>${percent.format(recall)}</strong><small>${number.format(hits)} of ${number.format(users)} hits</small></td>
+      <td>${metrics[`ndcg@${k}`].toFixed(6)}</td>
+      <td>${percent.format(metrics.catalog_coverage)}</td>
+      <td>${number.format(metrics.fallback_count)}</td>
+    </tr>`;
+  }).join("");
+  const recallContext = diagnostics ? `
+    <section class="evaluation-section" aria-labelledby="recall-heading">
+      <h2 id="recall-heading">Popularity and the hidden games</h2>
+      <dl class="evaluation-facts evaluation-diagnostics">
+        <div><dt>Median positive training reviews per hidden game</dt><dd>${number.format(diagnostics.median_target_positive_training_reviews)}</dd></div>
+        <div><dt>Median positive training reviews at rank ${k}</dt><dd>${diagnostics.median_popularity_cutoff == null ? "—" : number.format(diagnostics.median_popularity_cutoff)}</dd></div>
+        <div><dt>Test cases with zero positive training reviews for the hidden game</dt><dd>${number.format(diagnostics.targets_without_positive_training_reviews)} <small>of ${number.format(users)}</small></dd></div>
+      </dl>
+      <p class="evaluation-explanation">The popularity baseline ranks games by how many players recommended them in the training data. Rank ${k} is the last slot in its top-${k} list.</p>
+    </section>` : "";
+  const source = report.synthetic_data ? "Synthetic demo data" : "Kaggle sample";
+  return `
+    <dl class="evaluation-facts evaluation-sample">
+      <div><dt>Players evaluated</dt><dd>${number.format(users)}</dd></div>
+      <div><dt>Training interactions</dt><dd>${number.format(training)}</dd></div>
+      <div><dt>Games in the catalogue</dt><dd>${number.format(state.status.game_count)}</dd></div>
+    </dl>
+    <section class="evaluation-section" aria-labelledby="model-comparison">
+      <div class="section-line"><h2 id="model-comparison">Model comparison</h2><span>${source}</span></div>
+      <p class="evaluation-scroll-hint">Scroll to see all metrics.</p>
+      <div class="evaluation-table-wrap" role="region" aria-labelledby="model-comparison" tabindex="0">
+        <table class="evaluation-table">
+          <thead><tr><th scope="col">Method</th><th scope="col">Recall@${k}</th><th scope="col">NDCG@${k}</th><th scope="col">Coverage</th><th scope="col">Fallbacks</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+    ${recallContext}
+    <details class="evaluation-method">
+      <summary>How the scores are calculated</summary>
+      <p>One liked game is held out for each eligible player. A hit requires that exact game to appear in the top ${k} recommendations.</p>
+      <p>Players qualify with at least three ratings, including two positive ratings. ${number.format(report.ineligible_users)} players fell below those thresholds. The split uses seed ${number.format(report.seed)}.</p>
+      <dl>
+        <div><dt>Recall@${k}</dt><dd>Share of players whose hidden game appeared in the top ${k}.</dd></div>
+        <div><dt>NDCG@${k}</dt><dd>Gives more credit when the hidden game appears higher in the list.</dd></div>
+        <div><dt>Coverage</dt><dd>Share of catalogue games recommended at least once.</dd></div>
+        <div><dt>Fallbacks</dt><dd>Lists using popularity. This count includes every list from the popularity baseline.</dd></div>
+      </dl>
+    </details>`;
+}
+
+async function renderEvaluation() {
+  const token = ++state.requestId;
+  view.innerHTML = heading("Evaluation", "How often each method recovered a game the player liked.", false)
+    + `<div class="evaluation-report"><p class="initial-loading" role="status">Loading evaluation results…</p></div>`;
+  const container = view.querySelector(".evaluation-report");
+  view.setAttribute("aria-busy", "true");
+  try {
+    const report = await request("/api/evaluation");
+    if (token !== state.requestId) return;
+    container.innerHTML = evaluationHTML(report);
+    announce("Evaluation results loaded.");
+  } catch (error) {
+    if (token === state.requestId) container.innerHTML = errorHTML(error.message);
+  } finally {
+    if (token === state.requestId) view.setAttribute("aria-busy", "false");
+  }
+}
+
 function loadRoute(focus = false) {
   if (!state.ready) return;
   clearTimeout(filterTimer);
@@ -359,6 +444,7 @@ function loadRoute(focus = false) {
   if (state.route === "discover") renderDiscover();
   else if (state.route === "ratings") renderRatings();
   else if (state.route === "search") renderSearch();
+  else if (state.route === "evaluation") renderEvaluation();
   else renderRecommendationPage();
   if (focus) {
     window.scrollTo({ top: 0, behavior: "instant" });

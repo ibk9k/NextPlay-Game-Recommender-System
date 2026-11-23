@@ -6,6 +6,7 @@ import hashlib
 import math
 from collections import defaultdict
 from dataclasses import replace
+from statistics import median
 
 from game_recommender.catalog import Catalog
 from game_recommender.engine import RecommendationEngine
@@ -40,6 +41,8 @@ def evaluate(catalog: Catalog, *, seed=42, k=10) -> dict:
     profiles = defaultdict(dict)
     for item in training:
         profiles[item.user_id][item.app_id] = item.rating
+    target_popularity = [int(model.popularity[model.positions[game]]) for game in held_out.values()]
+    popularity_cutoffs = []
     reports = {}
     for method in ("popularity", "content", "collaborative"):
         hits = ndcg = fallbacks = 0
@@ -52,12 +55,15 @@ def evaluate(catalog: Catalog, *, seed=42, k=10) -> dict:
                     profiles[user_id], k
                 )
             ids = [item.app_id for item in result.results]
+            if method == "popularity" and len(ids) == k:
+                popularity_cutoffs.append(int(result.results[-1].score))
             coverage.update(ids)
             fallbacks += int(result.fallback)
             if target in ids:
                 hits += 1
                 ndcg += 1 / math.log2(ids.index(target) + 2)
         reports[method] = {
+            "hits": hits,
             f"recall@{k}": round(hits / len(held_out), 6),
             f"ndcg@{k}": round(ndcg / len(held_out), 6),
             "catalog_coverage": round(len(coverage) / len(catalog.games), 6),
@@ -75,6 +81,11 @@ def evaluate(catalog: Catalog, *, seed=42, k=10) -> dict:
         "test_interactions": len(held_out),
         "catalog_fingerprint": catalog.fingerprint,
         "models": reports,
+        "diagnostics": {
+            "targets_without_positive_training_reviews": target_popularity.count(0),
+            "median_target_positive_training_reviews": median(target_popularity),
+            "median_popularity_cutoff": median(popularity_cutoffs) if popularity_cutoffs else None,
+        },
         "note": (
             "Synthetic fixture metrics verify the evaluation pipeline, "
             "not real recommendation quality."

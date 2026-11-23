@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 def main(argv=None):
@@ -68,7 +69,10 @@ def main(argv=None):
 
                 report = evaluate(catalog, seed=args.seed, k=args.k)
                 args.output.parent.mkdir(parents=True, exist_ok=True)
-                args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+                with TemporaryDirectory(dir=args.output.parent) as directory:
+                    temporary_report = Path(directory) / args.output.name
+                    temporary_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
+                    temporary_report.replace(args.output)
             print(json.dumps(report, indent=2))
     except (ValueError, OSError, RuntimeError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

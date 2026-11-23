@@ -23,6 +23,7 @@ def test_evaluation_removes_every_held_out_pair_from_model_training(small_catalo
     assert result["synthetic_data"]
     assert set(result["models"]) == {"popularity", "content", "collaborative"}
     for metrics in result["models"].values():
+        assert metrics["recall@3"] == round(metrics["hits"] / len(held_out), 6)
         assert 0 <= metrics["recall@3"] <= 1
         assert 0 <= metrics["ndcg@3"] <= 1
         assert 0 <= metrics["catalog_coverage"] <= 1

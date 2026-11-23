@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -57,6 +59,10 @@ Profile = Annotated[str, Depends(resolve_profile)]
 def create_app(
     data_dir: Path | None = None, db_path: Path | None = None, artifact_dir: Path | None = None
 ) -> FastAPI:
+    artifacts = artifact_dir or Path(
+        os.environ.get("GAME_RS_ARTIFACT_DIR", PROJECT_DIR / "artifacts")
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         catalog = load_catalog(data_dir or default_catalog_dir())
@@ -65,10 +71,7 @@ def create_app(
             db_path
             or Path(os.environ.get("GAME_RS_DB_PATH", PROJECT_DIR / "data" / "ratings.sqlite3"))
         )
-        app.state.neural = NeuralSearch(
-            catalog,
-            artifact_dir or Path(os.environ.get("GAME_RS_ARTIFACT_DIR", PROJECT_DIR / "artifacts")),
-        )
+        app.state.neural = NeuralSearch(catalog, artifacts)
         yield
 
     app = FastAPI(title="Game Recommender System", version="0.1.0", lifespan=lifespan)
@@ -115,6 +118,34 @@ def create_app(
                 else "Imported Kaggle subsample. Binary reviews map to 1 or 5 for modeling."
             ),
         }
+
+    @app.get("/api/evaluation")
+    def evaluation():
+        """Return the saved holdout report for the loaded sample."""
+        try:
+            report = json.loads((artifacts / "evaluation.json").read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                404, "Run the evaluation to generate a report for this catalogue."
+            ) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(503, "The evaluation report could not be read. Try again.") from exc
+        if not isinstance(report, dict) or not isinstance(report.get("models"), dict):
+            raise HTTPException(503, "The evaluation report is invalid. Run the evaluation again.")
+
+        model = engine()
+        evaluated = report.get("evaluated_users")
+        if (
+            report.get("data_mode") != model.catalog.mode
+            or report.get("catalog_fingerprint") != model.catalog.fingerprint
+            or type(evaluated) is not int
+            or report.get("training_interactions") != len(model.catalog.interactions) - evaluated
+            or report.get("ineligible_users") != len(model.user_positions) - evaluated
+        ):
+            raise HTTPException(
+                409, "Run the evaluation again for the current catalogue and sample."
+            )
+        return report
 
     @app.get("/api/tags")
     def tags():
@@ -192,7 +223,12 @@ def create_app(
 
         @app.get("/", include_in_schema=False)
         def index():
-            return FileResponse(web_dir / "index.html")
+            html = (web_dir / "index.html").read_text(encoding="utf-8")
+            for name in ("styles.css", "app.js"):
+                digest = hashlib.sha256((web_dir / name).read_bytes()).hexdigest()[:12]
+                url = f"/static/{name}"
+                html = html.replace(f'"{url}"', f'"{url}?v={digest}"')
+            return HTMLResponse(html, headers={"Cache-Control": "no-store"})
     else:
 
         @app.get("/", include_in_schema=False)
